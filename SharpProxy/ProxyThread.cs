@@ -1,12 +1,10 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Net.Sockets;
-using System.Net;
-using System.Threading;
-using System.IO;
-using System.Linq;
 using System.Diagnostics;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading;
 
 namespace SharpProxy
 {
@@ -17,60 +15,54 @@ namespace SharpProxy
         public bool RewriteHostHeaders { get; set; }
         public bool Stopped { get; set; }
 
-        private TcpListener Listener { get; set; }
-
-        private readonly long PROXY_TIMEOUT_TICKS = new TimeSpan(0, 1, 0).Ticks;
-        
+        private TcpListener _listener;
+        private readonly long _proxyTimeoutTicks = new TimeSpan(0, 1, 0).Ticks;        
         private const string HTTP_SEPARATOR = "\r\n";
-        private const string HTTP_HEADER_BREAK = HTTP_SEPARATOR + HTTP_SEPARATOR;
-        
-        private readonly string[] HTTP_SEPARATORS = new string[] { HTTP_SEPARATOR };
-        private readonly string[] HTTP_HEADER_BREAKS = new string[] { HTTP_HEADER_BREAK };
+        private const string HTTP_HEADER_BREAK = HTTP_SEPARATOR + HTTP_SEPARATOR;        
+        private readonly string[] _httpSeparators = { HTTP_SEPARATOR };
+        private readonly string[] _httpHeaderBreaks = { HTTP_HEADER_BREAK };
 
         public ProxyThread(int extPort, int intPort, bool rewriteHostHeaders)
         {
-            this.ExternalPort = extPort;
-            this.InternalPort = intPort;
-            this.RewriteHostHeaders = rewriteHostHeaders;
-            this.Stopped = false;
-            this.Listener = null;
+            ExternalPort = extPort;
+            InternalPort = intPort;
+            RewriteHostHeaders = rewriteHostHeaders;
+            Stopped = false;
+            _listener = null;
 
-            new Thread(new ThreadStart(Listen)).Start();
+            new Thread(Listen).Start();
         }
 
         public void Stop()
         {
             Stopped = true;
-            if (Listener != null)
-            {
-                Listener.Stop();
-            }
+            _listener?.Stop();
         }
 
         protected void Listen()
         {
-            Listener = new TcpListener(new IPEndPoint(IPAddress.Any, this.ExternalPort));
-            Listener.Start();
+            _listener = new TcpListener(new IPEndPoint(IPAddress.Any, ExternalPort));
+            _listener.Start();
 
             while (!Stopped)
             {
                 try
                 {
-                    TcpClient client = Listener.AcceptTcpClient();
+                    TcpClient client = _listener.AcceptTcpClient();
                     //Dispatch the thread and continue listening...
-                    new Thread(new ThreadStart(() => Proxy(client))).Start();
+                    new Thread(() => Proxy(client)).Start();
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     //TODO: Remove this. Only here to catch breakpoints.
-                    bool failed = true;
+                    //bool failed = true;
                 }
             }
         }
 
         protected void Proxy(object arg)
         {
-            byte[] buffer = new byte[16384];
+            var buffer = new byte[16384];
             int clientRead = -1;
             int hostRead = -1;
 
@@ -79,33 +71,33 @@ namespace SharpProxy
             try
             {
                 //Setup connections
-                using (TcpClient client = (TcpClient)arg)
-                using (TcpClient host = new TcpClient())
+                using (var client = (TcpClient)arg)
+                using (var host = new TcpClient())
                 {
-                    host.Connect(new IPEndPoint(IPAddress.Loopback, this.InternalPort));
+                    host.Connect(new IPEndPoint(IPAddress.Loopback, InternalPort));
 
                     //Setup our streams
-                    using (BinaryReader clientIn = new BinaryReader(client.GetStream()))
-                    using (BinaryWriter clientOut = new BinaryWriter(client.GetStream()))
-                    using (BinaryReader hostIn = new BinaryReader(host.GetStream()))
-                    using (BinaryWriter hostOut = new BinaryWriter(host.GetStream()))
+                    using (var clientIn = new BinaryReader(client.GetStream()))
+                    using (var clientOut = new BinaryWriter(client.GetStream()))
+                    using (var hostIn = new BinaryReader(host.GetStream()))
+                    using (var hostOut = new BinaryWriter(host.GetStream()))
                     {
                         //Start funneling data!
-                        while (clientRead != 0 || hostRead != 0 || (DateTime.Now.Ticks - lastTime) <= PROXY_TIMEOUT_TICKS)
+                        while (clientRead != 0 || hostRead != 0 || (DateTime.Now.Ticks - lastTime) <= _proxyTimeoutTicks)
                         {
                             while (client.Connected && (clientRead = client.Available) > 0)
                             {
                                 clientRead = clientIn.Read(buffer, 0, buffer.Length);
 
                                 //Rewrite the host header?
-                                if (this.RewriteHostHeaders && clientRead > 0)
+                                if (RewriteHostHeaders && clientRead > 0)
                                 {
                                     string str = Encoding.UTF8.GetString(buffer, 0, clientRead);
 
-                                    int startIdx = str.IndexOf(HTTP_SEPARATOR + "Host:");
+                                    int startIdx = str.IndexOf(HTTP_SEPARATOR + "Host:", StringComparison.Ordinal);
                                     if (startIdx >= 0)
                                     {
-                                        int endIdx = str.IndexOf(HTTP_SEPARATOR, startIdx + 1, str.Length - (startIdx + 1));
+                                        int endIdx = str.IndexOf(HTTP_SEPARATOR, startIdx + 1, str.Length - (startIdx + 1), StringComparison.Ordinal);
                                         if (endIdx > 0)
                                         {
                                             string replace = str.Substring(startIdx, endIdx - startIdx);
@@ -138,7 +130,7 @@ namespace SharpProxy
                             }
 
                             //Sleepy time?
-                            if (this.Stopped)
+                            if (Stopped)
                                 return;
                             if (clientRead == 0 && hostRead == 0)
                             {
@@ -146,14 +138,14 @@ namespace SharpProxy
                             }
                         }
 
-                        long waitTime = DateTime.Now.Ticks - lastTime;
+                        //long waitTime = DateTime.Now.Ticks - lastTime;
                     }
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 //TODO: Remove this. Only here to catch breakpoints.
-                bool failed = true;
+                //bool failed = true;
             }
         }
     }

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -10,8 +11,9 @@ namespace SharpProxy
 {
     public class ProxyThread
     {
-        public int ExternalPort { get; set; }
-        public int InternalPort { get; set; }
+        public int SourcePort { get; set; }
+        public string DestHost { get; set; }
+        public int DestPort { get; set; }
         public bool RewriteHostHeaders { get; set; }
         public bool Stopped { get; set; }
 
@@ -22,10 +24,11 @@ namespace SharpProxy
         private readonly string[] _httpSeparators = { HTTP_SEPARATOR };
         private readonly string[] _httpHeaderBreaks = { HTTP_HEADER_BREAK };
 
-        public ProxyThread(int extPort, int intPort, bool rewriteHostHeaders)
+        public ProxyThread(int sourcePort, string destHost, int destPort, bool rewriteHostHeaders)
         {
-            ExternalPort = extPort;
-            InternalPort = intPort;
+            SourcePort = sourcePort;
+            DestHost = destHost;
+            DestPort = destPort;
             RewriteHostHeaders = rewriteHostHeaders;
             Stopped = false;
             _listener = null;
@@ -41,7 +44,7 @@ namespace SharpProxy
 
         protected void Listen()
         {
-            _listener = new TcpListener(new IPEndPoint(IPAddress.Any, ExternalPort));
+            _listener = new TcpListener(new IPEndPoint(IPAddress.Any, SourcePort));
             _listener.Start();
 
             while (!Stopped)
@@ -74,7 +77,13 @@ namespace SharpProxy
                 using (var client = (TcpClient)arg)
                 using (var host = new TcpClient())
                 {
-                    host.Connect(new IPEndPoint(IPAddress.Loopback, InternalPort));
+                    if (DestHost == "")
+                        host.Connect(new IPEndPoint(IPAddress.Loopback, DestPort));
+                    else
+                    {
+                        IPHostEntry hostserver = Dns.GetHostEntry(DestHost);
+                        host.Connect(new IPEndPoint(hostserver.AddressList.Last(), DestPort));
+                    }
 
                     //Setup our streams
                     using (var clientIn = new BinaryReader(client.GetStream()))
@@ -101,7 +110,7 @@ namespace SharpProxy
                                         if (endIdx > 0)
                                         {
                                             string replace = str.Substring(startIdx, endIdx - startIdx);
-                                            string replaceWith = HTTP_SEPARATOR + "Host: localhost:" + InternalPort;
+                                            string replaceWith = HTTP_SEPARATOR + "Host: localhost:" + DestPort;
 
                                             Trace.WriteLine("Incoming HTTP header:\n\n" + str);
 

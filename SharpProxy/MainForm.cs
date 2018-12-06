@@ -25,7 +25,7 @@ namespace SharpProxy
             InitializeComponent();
             Text += " " + Assembly.GetExecutingAssembly().GetName().Version;
 
-            IOrderedEnumerable<string> ips = getLocalIPs().OrderBy(x => x);
+            IOrderedEnumerable<string> ips = GetLocalIPs().OrderBy(x => x);
             foreach (string s in ips)
             {
                 cmbIPAddress.Items.Clear();
@@ -38,7 +38,7 @@ namespace SharpProxy
                 break;
             }
 
-            int port = 5000;
+            int port = 9090;
             while (!checkPortAvailability(port))
             {
                 port++;
@@ -52,7 +52,7 @@ namespace SharpProxy
             set => base.Text = value;
         }
 
-        private void frmMain_Shown(object sender, EventArgs e)
+        private void MainForm_Shown(object sender, EventArgs e)
         {
             txtInternalPort.Focus();
 
@@ -75,7 +75,7 @@ namespace SharpProxy
             }
         }
 
-        private void frmMain_FormClosing(object sender, FormClosingEventArgs e)
+        private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
             _proxyThreadListener?.Stop();
 
@@ -101,23 +101,27 @@ namespace SharpProxy
         private void btnStart_Click(object sender, EventArgs e)
         {
             //Validation
-            int.TryParse(txtExternalPort.Text, out int externalPort);
-            int.TryParse(txtInternalPort.Text, out int internalPort);
+            int.TryParse(txtExternalPort.Text, out int sourcePort);
+            int.TryParse(txtInternalPort.Text, out int destinationPort);
 
-            if (!checkPortRange(externalPort)
-                || !checkPortRange(internalPort)
-                || externalPort == internalPort)
+            string portForwardHost = "";
+            if (chkPortForward.Checked)
+                portForwardHost = teRemotehost.Text;
+
+            if (!checkPortRange(sourcePort)
+                || !checkPortRange(destinationPort)
+                || sourcePort == destinationPort)
             {
                 showError("Ports must be between " + MIN_PORT + "-" + MAX_PORT + " and must not be the same.");
                 return;
             }
-            if (!checkPortAvailability(externalPort))
+            if (!checkPortAvailability(sourcePort))
             {
-                showError("Port " + externalPort + " is not available, please select a different port.");
+                showError("Port " + sourcePort + " is not available, please select a different port.");
                 return;
             }
 
-            _proxyThreadListener = new ProxyThread(externalPort, internalPort, chkRewriteHostHeaders.Checked);
+            _proxyThreadListener = new ProxyThread(sourcePort, portForwardHost, destinationPort, chkRewriteHostHeaders.Checked);
 
             ToggleButtons();
         }
@@ -141,7 +145,7 @@ namespace SharpProxy
             return true;
         }
 
-        private List<string> getLocalIPs()
+        private List<string> GetLocalIPs()
         {
             //Try to find our internal IP address...
             string myHost = Dns.GetHostName();
@@ -223,7 +227,7 @@ namespace SharpProxy
             }
         }
 
-        private void frmMain_Resize(object sender, EventArgs e)
+        private void MainForm_Resize(object sender, EventArgs e)
         {
             if (FormWindowState.Minimized == WindowState)
                 Hide();
